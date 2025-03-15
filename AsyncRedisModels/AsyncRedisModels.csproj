@@ -1,13 +1,39 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+		<AssemblyVersion>1.0.0.0</AssemblyVersion>
+		<FileVersion>$(AssemblyVersion)</FileVersion>
+		<Version>$(AssemblyVersion)</Version>
+		<Title>Async Redis Models</Title>
+		<Authors>Bryly Maeder</Authors>
+		<Description>
+			A better, smarter, and faster way to interact with Redis.
+			While RediJson allows access to JSON models, direct hash calls remain the best way to maximize performance on Redis.
 
-  <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="RediSearchClient" Version="2.4.0" />
-    <PackageReference Include="StackExchange.Redis" Version="2.8.31" />
-  </ItemGroup>
+			Easily perform complex queries using LINQ and partially load/update your models.
+		</Description>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageProjectUrl>https://github.com/BrylyMaeder/AsyncRedisModels</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/BrylyMaeder/AsyncRedisModels</RepositoryUrl>
+		<PackageLicenseFile>LICENSE</PackageLicenseFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\LICENSE">
+		  <Pack>True</Pack>
+		  <PackagePath>\</PackagePath>
+		</None>
+		<None Include="..\README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<PackageReference Include="RediSearchClient" Version="2.4.0" />
+		<PackageReference Include="StackExchange.Redis" Version="2.8.31" />
+	</ItemGroup>
 
 </Project>
