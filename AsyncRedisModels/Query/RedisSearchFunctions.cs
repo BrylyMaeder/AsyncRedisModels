@@ -11,9 +11,9 @@ using System.Threading.Tasks;
 
 namespace AsyncRedisModels.Query
 {
-    class RedisSearchFunctions
+    internal class RedisSearchFunctions
     {
-        internal static async Task<(List<string> DocumentIds, int TotalCount, int TotalPages)> Execute<TModel>(RedisQuery<TModel> query,int pageNumber = 1,int pageSize = 1000) where TModel : IAsyncModel
+        internal static async Task<(List<string> DocumentIds, int TotalCount, int TotalPages)> Execute(RedisQuery query,int pageNumber = 1,int pageSize = 1000)
         {
             try
             {
@@ -24,11 +24,12 @@ namespace AsyncRedisModels.Query
                 var builtQuery = query.Build();
 
                 // Use a default query if the input query is null or empty
-                string searchQuery = string.IsNullOrWhiteSpace(builtQuery.query) ? "*" : builtQuery.query;
+                string searchQuery = string.IsNullOrWhiteSpace(builtQuery) ? "*" : builtQuery;
 
+                Console.WriteLine($"At search: {builtQuery}");
                 var result = await RedisSingleton.Database.ExecuteAsync(
                     "FT.SEARCH",
-                    builtQuery.indexName,
+                    query.IndexName,
                     searchQuery,
                     "NOCONTENT", // Only return document IDs, not content
                     "LIMIT",
@@ -88,17 +89,17 @@ namespace AsyncRedisModels.Query
     List<string> selectedFields,
     int pageNumber = 1,
     int pageSize = 1000
-) where TModel : IAsyncModel, new()
+) where TModel : IAsyncModel
         {
             try
             {
                 int offset = (pageNumber - 1) * pageSize;
                 var builtQuery = query.Build();
-                string searchQuery = string.IsNullOrWhiteSpace(builtQuery.query) ? "*" : builtQuery.query;
+                string searchQuery = string.IsNullOrWhiteSpace(builtQuery) ? "*" : builtQuery;
 
                 var redisQuery = new List<object>
         {
-            builtQuery.indexName,
+            query.IndexName,
             searchQuery,
             "LIMIT", offset, pageSize
         };

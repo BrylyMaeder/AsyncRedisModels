@@ -1,4 +1,5 @@
 ﻿using AsyncRedisModels.Attributes;
+using AsyncRedisModels.Contracts;
 using AsyncRedisModels.Helper;
 using AsyncRedisModels.Index;
 using System;
@@ -9,31 +10,40 @@ using System.Text;
 
 namespace AsyncRedisModels.Query
 {
-    public class RedisQuery<TModel> 
+    public class RedisQuery 
     {
-        public readonly List<string> conditions;
+        public readonly List<string> Conditions;
+        public readonly string IndexName;
 
-        public RedisQuery()
+        public string Build()
         {
-            conditions = new List<string>();
+            if (Conditions.Count == 0)
+                return "*";
+
+            return Conditions.Count == 1
+                ? Conditions[0]
+                : $"({string.Join(" ", Conditions)})";
         }
+
+        public RedisQuery(string indexName)
+        {
+            IndexName = indexName;
+            Conditions = new List<string>();
+        }
+    }
+    public class RedisQuery<TModel> : RedisQuery where TModel : IAsyncModel
+    {
+        public RedisQuery(string indexName) : base(indexName)
+        {
+
+        }
+
         public RedisQuery<TModel> Where(Expression<Func<TModel, bool>> predicate)
         {
             var condition = ParseExpression(predicate.Body, predicate.Parameters[0]);
             if (!string.IsNullOrEmpty(condition))
-                conditions.Add(condition);
+                Conditions.Add(condition);
             return this;
-        }
-
-        public (string indexName, string query) Build()
-        {
-            var index = ModelHelper.GetIndex<TModel>();
-            if (conditions.Count == 0)
-                return (index, "*");
-
-            return (index, conditions.Count == 1
-                ? conditions[0]
-                : $"({string.Join(" ", conditions)})");
         }
 
         private string ParseExpression(Expression expression, ParameterExpression parameter)
@@ -269,7 +279,9 @@ namespace AsyncRedisModels.Query
             return value.Replace("\"", "\\\"")    // Escape quotes
                         .Replace(" ", "\\ ")      // Escape spaces
                         .Replace(":", "\\:")      // Escape colons
-                        .Replace("@", "\\@");     // Escape @ symbol
+                        .Replace("@", "\\@")     // Escape @ symbol
+                        .Replace(".", "\\.");     // Escape @ symbol
+
         }
     }
 }

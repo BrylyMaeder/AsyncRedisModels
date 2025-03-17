@@ -37,6 +37,12 @@ namespace AsyncRedisModels.Index.Generation
             var indexName = document.IndexName();
             var result = IndexDefinitionBuilder.Build(document);
 
+            if (result.IndexDefinition == null || result.IndexHash == null)
+            {
+                // Do not index non-indexed stuff.
+                return;
+            }
+
             var indexModel = await RedisRepository.LoadAsync<IndexModel>(indexName, s => s.LastUpdated, s => s.IndexHash);
             if (indexModel == null || indexModel.RequiresUpdate(result.IndexHash))
                 await UpdateIndexAsync(indexName, result.IndexDefinition, result.IndexHash);
@@ -70,7 +76,17 @@ namespace AsyncRedisModels.Index.Generation
 
         private static async Task<IndexModel> CreateNewIndexAsync(string indexName, RediSearchIndexDefinition definition, string hash)
         {
-            var indexModel = await RedisRepository.LoadAsync<IndexModel>(indexName) ?? await RedisRepository.CreateAsync<IndexModel>(indexName);
+            var indexModel = await RedisRepository.LoadAsync<IndexModel>(indexName);
+            if (indexModel == null)
+            {
+                var result = await RedisRepository.CreateAsync<IndexModel>(indexName);
+                if (!result.Succeeded)
+                {
+                    throw new Exception(result.Message);
+                }
+
+                indexModel = result.Data;
+            }
 
             if (definition != null && !string.IsNullOrEmpty(hash))
             {
@@ -83,6 +99,7 @@ namespace AsyncRedisModels.Index.Generation
 
             return indexModel;
         }
+
 
     }
 }

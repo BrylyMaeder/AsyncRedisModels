@@ -1,4 +1,5 @@
-﻿using AsyncRedisModels.Attributes;
+﻿using AsyncRedisDocuments;
+using AsyncRedisModels.Attributes;
 using AsyncRedisModels.Contracts;
 using AsyncRedisModels.Index;
 using System;
@@ -9,10 +10,14 @@ namespace AsyncRedisModels
 {
     public class Character : IAsyncModel
     {
-        [Indexed(IndexType.Tag)]
+        [Unique]
         public string Username { get; set; }
         public string Id { get; set; }
         public DateTime CreatedAt { get; set; }
+
+        public LinkedModels<Character> Characters => new LinkedModels<Character>(this);
+        public LinkedModel<Character> LinkedCharacter => new LinkedModel<Character>(this);
+        public LinkedModel<Character> LinkedCharacter2 => new LinkedModel<Character>(this);
 
         public string IndexName()
         {

@@ -3,6 +3,7 @@ using AsyncRedisModels.Extensions;
 using AsyncRedisModels.Factory;
 using AsyncRedisModels.Helper;
 using AsyncRedisModels.Index.Models;
+using AsyncRedisModels.Models;
 using Newtonsoft.Json.Linq;
 using StackExchange.Redis;
 using System;
@@ -19,7 +20,46 @@ namespace AsyncRedisModels.Repository
 {
     public partial class RedisRepository
     {
-        public static async Task<TModel> CreateAsync<TModel>(string id = "") where TModel : IAsyncModel
+        public static async Task<ModelCreationResult<TModel>> CreateAsync<TModel>(TModel newModel) where TModel : IAsyncModel
+        {
+            var index = ModelHelper.GetIndex<TModel>();
+            var db = RedisSingleton.Database;
+
+            try
+            {
+                newModel.CreatedAt = DateTime.UtcNow;
+
+                // Ensure uniqueness atomically
+                var modelKey = newModel.GetKey();
+                if (await db.KeyExistsAsync(modelKey))
+                {
+                    return new ModelCreationResult<TModel>
+                    {
+                        Data = newModel,
+                        Message = $"An object with the key [{newModel.GetKey()}] already exists.",
+                        Succeeded = true,
+                    };
+                }
+
+                // Save the new model
+                await newModel.PushAsync(s => s.CreatedAt);
+
+                return new ModelCreationResult<TModel>
+                {
+                    Data = newModel,
+                    Message = "Successfully created",
+                    Succeeded = true,
+                };
+            }
+            catch (Exception ex)
+            {
+                // Handle exceptions gracefully
+                // Log the exception (optional)
+                throw new InvalidOperationException($"Failed to create the model with key {index}:{newModel.Id}.", ex);
+            }
+        }
+
+        public static async Task<ModelCreationResult<TModel>> CreateAsync<TModel>(string id = "") where TModel : IAsyncModel
         {
             var index = ModelHelper.GetIndex<TModel>();
             var db = RedisSingleton.Database;
@@ -27,7 +67,7 @@ namespace AsyncRedisModels.Repository
             // Validate ID
             if (string.IsNullOrWhiteSpace(id))
             {
-                id = $"{await db.HashIncrementAsync($"index:counters", index)}";
+                id = Guid.NewGuid().ToString();
             }
 
             try
@@ -39,13 +79,23 @@ namespace AsyncRedisModels.Repository
                 var modelKey = newModel.GetKey();
                 if (await db.KeyExistsAsync(modelKey))
                 {
-                    throw new Exception("An object with that ID already exists.");
+                    return new ModelCreationResult<TModel>
+                    {
+                        Data = newModel,
+                        Message = $"An object with the key [{newModel.GetKey()}] already exists.",
+                        Succeeded = false,
+                    };
                 }
 
                 // Save the new model
                 await newModel.PushAsync(s => s.CreatedAt);
 
-                return newModel;
+                return new ModelCreationResult<TModel>
+                {
+                    Data = newModel,
+                    Message = "Successfully created",
+                    Succeeded = true,
+                };
             }
             catch (Exception ex)
             {
@@ -55,30 +105,22 @@ namespace AsyncRedisModels.Repository
             }
         }
 
+
         public static async Task<TModel> LoadAsync<TModel>(string id, params Expression<Func<TModel, object>>[] expressions) where TModel : IAsyncModel
         {
             var db = RedisSingleton.Database;
-
             var key = ModelHelper.CreateKey<TModel>(id);
 
             if (!await db.KeyExistsAsync(key))
-            {
                 return default;
-            }
 
-            // Get the member names from expressions
-            var memberNames = expressions
-                .Select(exp => MemberSelector.GetMemberName(exp))
-                .Select(name => (RedisValue)name)
-                .ToArray();
+            var memberNames = expressions.Any()
+                ? expressions.Select(exp => MemberSelector.GetMemberName(exp)).Select(name => (RedisValue)name).ToArray()
+                : typeof(TModel).GetProperties().Select(p => (RedisValue)p.Name).ToArray();
 
-            // Retrieve the values for the specific ID
             var values = await db.HashGetAsync(key, memberNames);
-
-            // Create an instance of T to hold the result
             var result = ModelFactory.Create<TModel>(id);
 
-            // Map values to corresponding properties
             for (int i = 0; i < memberNames.Length; i++)
             {
                 var memberName = memberNames[i];
@@ -90,7 +132,15 @@ namespace AsyncRedisModels.Repository
 
                     if (property != null && property.CanWrite)
                     {
-                        // Convert and set the property value
+                        // Skip properties implementing IModelComponent
+                        if (typeof(IModelComponent).IsAssignableFrom(property.PropertyType))
+                        {
+                            continue;
+                        }
+                        if (typeof(IAsyncModel).IsAssignableFrom(property.PropertyType))
+                        {
+                            continue;
+                        }
                         var convertedValue = value.DeserializeFromRedis(property.PropertyType);
                         property.SetValue(result, convertedValue);
                     }
@@ -99,6 +149,5 @@ namespace AsyncRedisModels.Repository
 
             return result;
         }
-
     }
 }

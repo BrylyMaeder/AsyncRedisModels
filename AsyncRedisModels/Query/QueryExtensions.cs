@@ -6,28 +6,41 @@ using System.Text;
 using System.Threading.Tasks;
 using AsyncRedisModels.Factory;
 using AsyncRedisModels.Contracts;
+using AsyncRedisModels.Query;
+using AsyncRedisModels.Repository;
 
-namespace AsyncRedisModels.Query
+namespace AsyncRedisModels
 {
     public static class QueryExtensions
     {
-        public static async Task<(List<TModel> Documents, int TotalCount, int TotalPages)> ToPagedListAsync<TModel>(this RedisQuery<TModel> query, int page = 1, int pageSize = 1000) where TModel : IAsyncModel
+        public static async Task<(List<TModel> Documents, int TotalCount, int TotalPages)> ToPagedListAsync<TModel>(this RedisQuery query, int page = 1, int pageSize = 1000) where TModel : IAsyncModel
         {
             var results = await RedisSearchFunctions.Execute(query, page, pageSize);
 
-            var documents = results.DocumentIds.Select(s => ModelFactory.Create<TModel>(s)).ToList();
+            var documents = (List<TModel>)await RedisRepository.LoadManyAsync<TModel>(results.DocumentIds);
 
             return (documents, results.TotalCount, results.TotalPages);
         }
-
         public static async Task<List<TModel>> ToListAsync<TModel>(this RedisQuery<TModel> builder, int page = 1, int pageSize = 1000) where TModel : IAsyncModel
         {
             var results = await RedisSearchFunctions.Execute(builder, page, pageSize);
 
-            return results.DocumentIds.Select(s => ModelFactory.Create<TModel>(s)).ToList();
+            // Load the models asynchronously and convert the result to a list
+            var documentIds = results.DocumentIds;
+
+            if (documentIds == null || !documentIds.Any())
+            {
+                return new List<TModel>(); // Return an empty list if no document IDs
+            }
+
+            var loadedItems = await RedisRepository.LoadManyAsync<TModel>(documentIds);
+
+            // Convert to a List<TModel> if it's not already a List<TModel>
+            return loadedItems.ToList();
         }
 
-        public static async Task<bool> AnyAsync<TModel>(this RedisQuery<TModel> query) where TModel : IAsyncModel
+
+        public static async Task<bool> AnyAsync(this RedisQuery query)
         {
             var results = await RedisSearchFunctions.Execute(query, 1, 1);
 

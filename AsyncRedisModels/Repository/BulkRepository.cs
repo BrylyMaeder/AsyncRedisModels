@@ -10,13 +10,14 @@ using System.Threading.Tasks;
 using System.Threading;
 using AsyncRedisModels.Extensions;
 using System.Linq.Expressions;
+using AsyncRedisModels.Models;
 
 namespace AsyncRedisModels.Repository
 {
     public partial class RedisRepository
     {
         #region Creation
-        public static async Task<IEnumerable<TModel>> CreateManyAsync<TModel>(int amount, CancellationToken cancellationToken = default)
+        public static async Task<ModelCreationResult<IEnumerable<TModel>>> CreateManyAsync<TModel>(int amount, CancellationToken cancellationToken = default)
     where TModel : IAsyncModel
         {
             var index = ModelHelper.GetIndex<TModel>();
@@ -33,7 +34,7 @@ namespace AsyncRedisModels.Repository
             {
                 for (long i = startId; i < startId + amount; i++)
                 {
-                    var id = $"{i}";
+                    var id = Guid.NewGuid().ToString();
                     var newModel = ModelFactory.Create<TModel>(id);
                     newModel.CreatedAt = DateTime.UtcNow;
 
@@ -43,20 +44,37 @@ namespace AsyncRedisModels.Repository
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"Failed to create the models starting from {index}:{startId}.", ex);
+                return new ModelCreationResult<IEnumerable<TModel>>
+                {
+                    Data = models,
+                    Message = $"Failed to create the models starting from {index}:{startId}.",
+                    Succeeded = false
+                };
             }
 
             batchCreate.Execute();
             if ((await Task.WhenAll(tasksCreate)).Any(s => !s))
-                throw new Exception("Failed to create object(s). Some object IDs already existed.");
+            {
+                return new ModelCreationResult<IEnumerable<TModel>>
+                {
+                    Data = models,
+                    Message = "Failed to create object(s). Some object IDs already existed.",
+                    Succeeded = false
+                };
+            }
 
             // Persist model data atomically
             await PersistModels(models, db, cancellationToken);
 
-            return models;
+            return new ModelCreationResult<IEnumerable<TModel>>
+            {
+                Data = models,
+                Message = "Successfully created models.",
+                Succeeded = true
+            };
         }
 
-        public static async Task<IEnumerable<TModel>> CreateManyAsync<TModel>(IEnumerable<string> ids, CancellationToken cancellationToken = default)
+        public static async Task<ModelCreationResult<IEnumerable<TModel>>> CreateManyAsync<TModel>(IEnumerable<string> ids, CancellationToken cancellationToken = default)
             where TModel : IAsyncModel
         {
             var index = ModelHelper.GetIndex<TModel>();
@@ -64,7 +82,14 @@ namespace AsyncRedisModels.Repository
 
             // Validate IDs
             if (ids == null || !ids.Any() || ids.Any(string.IsNullOrEmpty))
-                throw new ArgumentException("Invalid input IDs.", nameof(ids));
+            {
+                return new ModelCreationResult<IEnumerable<TModel>>
+                {
+                    Data = null,
+                    Message = "Invalid input IDs.",
+                    Succeeded = false
+                };
+            }
 
             var models = new List<TModel>();
 
@@ -74,7 +99,14 @@ namespace AsyncRedisModels.Repository
             batch.Execute();
 
             if ((await Task.WhenAll(tasks)).Any(exists => exists))
-                throw new Exception("One or more provided IDs already exist.");
+            {
+                return new ModelCreationResult<IEnumerable<TModel>>
+                {
+                    Data = models,
+                    Message = "One or more provided IDs already exist.",
+                    Succeeded = false
+                };
+            }
 
             // Create models and check uniqueness
             var batchCreate = db.CreateBatch();
@@ -92,19 +124,37 @@ namespace AsyncRedisModels.Repository
                 }
                 catch (Exception ex)
                 {
-                    throw new InvalidOperationException($"Failed to create the model with key {index}:{id}.", ex);
+                    return new ModelCreationResult<IEnumerable<TModel>>
+                    {
+                        Data = models,
+                        Message = $"Failed to create the model with key {index}:{id}.",
+                        Succeeded = false
+                    };
                 }
             }
 
             batchCreate.Execute();
             if ((await Task.WhenAll(tasksCreate)).Any(s => !s))
-                throw new Exception("Failed to create objects. One or more object IDs already existed.");
+            {
+                return new ModelCreationResult<IEnumerable<TModel>>
+                {
+                    Data = models,
+                    Message = "Failed to create objects. One or more object IDs already existed.",
+                    Succeeded = false
+                };
+            }
 
             // Persist models atomically
             await PersistModels(models, db, cancellationToken);
 
-            return models;
+            return new ModelCreationResult<IEnumerable<TModel>>
+            {
+                Data = models,
+                Message = "Successfully created models.",
+                Succeeded = true
+            };
         }
+
 
         private static async Task PersistModels<TModel>(List<TModel> models, IDatabase db, CancellationToken cancellationToken) where TModel : IAsyncModel
         {
@@ -137,7 +187,10 @@ namespace AsyncRedisModels.Repository
             // Check if keys exist
             foreach (var id in ids)
             {
-                var key = $"{indexName}:{id}";
+                var key = $"{id}";
+                if (!key.Contains(':'))
+                    key = $"{indexName}:{id}";
+
                 tasks.Add(batch.KeyExistsAsync(key));  // Check if the key exists
                 keys.Add(key);
             }
@@ -153,11 +206,10 @@ namespace AsyncRedisModels.Repository
 
             if (!validKeys.Any()) return Enumerable.Empty<TModel>();
 
-            // Get member names from expressions
-            var memberNames = expressions
-                .Select(exp => MemberSelector.GetMemberName(exp))
-                .Select(name => (RedisValue)name)
-                .ToArray();
+            // Get member names from expressions or all properties
+            var memberNames = expressions.Any()
+                ? expressions.Select(exp => MemberSelector.GetMemberName(exp)).Select(name => (RedisValue)name).ToArray()
+                : typeof(TModel).GetProperties().Select(p => (RedisValue)p.Name).ToArray();
 
             // Create a new batch for fetching data
             batch = db.CreateBatch();
@@ -190,6 +242,16 @@ namespace AsyncRedisModels.Repository
 
                         if (property != null && property.CanWrite)
                         {
+                            // Skip properties implementing IModelComponent
+                            if (typeof(IModelComponent).IsAssignableFrom(property.PropertyType))
+                            {
+                                continue;
+                            }
+                            if (typeof(IAsyncModel).IsAssignableFrom(property.PropertyType))
+                            {
+                                continue;
+                            }
+
                             var convertedValue = value.DeserializeFromRedis(property.PropertyType);
                             property.SetValue(result, convertedValue);
                         }
@@ -201,6 +263,7 @@ namespace AsyncRedisModels.Repository
 
             return results;
         }
+
         #endregion
 
     }
