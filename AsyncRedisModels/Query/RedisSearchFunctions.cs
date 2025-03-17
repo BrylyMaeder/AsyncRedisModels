@@ -26,7 +26,6 @@ namespace AsyncRedisModels.Query
                 // Use a default query if the input query is null or empty
                 string searchQuery = string.IsNullOrWhiteSpace(builtQuery) ? "*" : builtQuery;
 
-                Console.WriteLine($"At search: {builtQuery}");
                 var result = await RedisSingleton.Database.ExecuteAsync(
                     "FT.SEARCH",
                     query.IndexName,

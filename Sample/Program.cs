@@ -4,7 +4,7 @@ using AsyncRedisModels.Query;
 using AsyncRedisModels.Repository;
 using System.Linq.Expressions;
 
-RedisSingleton.Initialize("host", port:5000, "password");
+RedisSingleton.Initialize("redis-13464.c81.us-east-1-2.ec2.redns.redis-cloud.com", 13464, "4TdQe8UepIdXwrGBGSJwTl5s1nsvYpgN");
 Console.WriteLine("Hello, World!");
 
 var creationResult = await RedisRepository.CreateAsync<Character>();
