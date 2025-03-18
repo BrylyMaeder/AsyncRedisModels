@@ -4,7 +4,7 @@ using AsyncRedisModels.Query;
 using AsyncRedisModels.Repository;
 using System.Linq.Expressions;
 
-RedisSingleton.Initialize("redis-13464.c81.us-east-1-2.ec2.redns.redis-cloud.com", 13464, "4TdQe8UepIdXwrGBGSJwTl5s1nsvYpgN");
+RedisSingleton.Initialize("host", port:0000, "password");
 Console.WriteLine("Hello, World!");
 
 var creationResult = await RedisRepository.CreateAsync<Character>("test");
@@ -22,14 +22,11 @@ Console.WriteLine($"Id: {character.Id}");
 character.Username = "fish@face.com";
 
 await character.PushAsync(s => s.Username);
-character.myCharacter.IsReal = true;
-await character.myCharacter.PushAsync(s => s.IsReal);
+character.myNestedObject.IsReal = true;
+await character.myNestedObject.PushAsync(s => s.IsReal);
 var pushResult = await character.PushAsync(s => s.Username);
 
 await character.PullAsync(s => s.Username);
-await character.Characters.AddOrUpdateAsync(character);
-await character.LinkedCharacter.SetAsync(character);
-await character.LinkedCharacter2.SetAsync(character);
 
 Console.WriteLine(character.Username);
 

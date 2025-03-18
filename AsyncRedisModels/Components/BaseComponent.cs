@@ -1,9 +1,8 @@
 ﻿
-using AsyncRedisModels;
 using AsyncRedisModels.Contracts;
 using System.Runtime.CompilerServices;
 
-namespace AsyncRedisDocuments.Components
+namespace AsyncRedisModels.Components
 {
     public class BaseComponent : IModelComponent
     {

@@ -1,4 +1,4 @@
-﻿using AsyncRedisDocuments.Components;
+﻿using AsyncRedisModels.Components;
 using AsyncRedisModels;
 using AsyncRedisModels.Extensions;
 using StackExchange.Redis;
@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace AsyncRedisDocuments
+namespace AsyncRedisModels
 {
     public class AsyncDictionary<TKey, TValue> : BaseComponent
     {

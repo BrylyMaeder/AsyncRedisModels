@@ -1,4 +1,4 @@
-﻿using AsyncRedisDocuments.Components;
+﻿using AsyncRedisModels.Components;
 using AsyncRedisModels;
 using AsyncRedisModels.Factory;
 using AsyncRedisModels.Repository;
@@ -8,11 +8,11 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
-namespace AsyncRedisDocuments
+namespace AsyncRedisModels
 {
-    public class LinkedModels<TModel> : BaseComponent where TModel : IAsyncModel
+    public class AsyncLinks<TModel> : BaseComponent where TModel : IAsyncModel
     {
-        public LinkedModels(IAsyncModel document, [CallerMemberName] string propertyName = "") : base(document, propertyName)
+        public AsyncLinks(IAsyncModel document, [CallerMemberName] string propertyName = "") : base(document, propertyName)
         {
 
         }

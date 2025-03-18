@@ -1,22 +1,12 @@
 ﻿using AsyncRedisModels.Attributes;
-using AsyncRedisModels.Contracts;
-using AsyncRedisModels.Extensions;
 using AsyncRedisModels.Factory;
 using AsyncRedisModels.Helper;
-using AsyncRedisModels.Index.Models;
 using AsyncRedisModels.Models;
-using Newtonsoft.Json.Linq;
-using StackExchange.Redis;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.Linq;
 
 namespace AsyncRedisModels.Repository
 {
@@ -107,7 +97,7 @@ namespace AsyncRedisModels.Repository
             }
         }
 
-        public static async Task<IAsyncModel> LoadAsync(Type modelType, string id)
+        internal static async Task<IAsyncModel> LoadAsync(Type modelType, string id)
         {
             if (!typeof(IAsyncModel).IsAssignableFrom(modelType))
             {

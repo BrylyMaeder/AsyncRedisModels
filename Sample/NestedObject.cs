@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace Sample
 {
-    public class Character2 : IAsyncModel
+    public class NestedObject : IAsyncModel
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
 

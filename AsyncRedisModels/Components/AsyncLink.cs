@@ -1,4 +1,4 @@
-﻿using AsyncRedisDocuments.Components;
+﻿using AsyncRedisModels.Components;
 using AsyncRedisModels;
 using AsyncRedisModels.Factory;
 using AsyncRedisModels.Repository;
@@ -8,13 +8,13 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace AsyncRedisDocuments
+namespace AsyncRedisModels
 {
-    public class LinkedModel<TDocument> : BaseComponent where TDocument : IAsyncModel
+    public class AsyncLink<TDocument> : BaseComponent where TDocument : IAsyncModel
     {
-        private AsyncDictionary<string, string> _links { get; set; }
+        protected AsyncDictionary<string, string> _links { get; set; }
 
-        public LinkedModel(IAsyncModel document = null, [CallerMemberName] string propertyName = "") : base(document, propertyName) 
+        public AsyncLink(IAsyncModel document = null, [CallerMemberName] string propertyName = "") : base(document, propertyName) 
         {
             _links = new AsyncDictionary<string, string>(document, "links");
         }
@@ -24,7 +24,7 @@ namespace AsyncRedisDocuments
             await _links.SetAsync(_propertyName, id);
         }
 
-        public async Task SetAsync(TDocument document)
+        public virtual async Task SetAsync(TDocument document)
         {
             if (document == null)
             {
@@ -35,17 +35,17 @@ namespace AsyncRedisDocuments
             await SetAsync(document.Id);
         }
 
-        public async Task ClearAsync() 
+        public virtual async Task ClearAsync() 
         {
             await _links.RemoveAsync(_propertyName);
         }
 
-        public async Task<string> GetIdAsync()
+        public virtual async Task<string> GetIdAsync()
         {
             return await _links.GetByKeyAsync(_propertyName);
         }
 
-        public async Task<TDocument> GetAsync()
+        public virtual async Task<TDocument> GetAsync()
         {
             return await RedisRepository.LoadAsync<TDocument>(await GetIdAsync());
         }

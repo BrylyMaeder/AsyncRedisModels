@@ -1,4 +1,4 @@
-﻿using AsyncRedisDocuments;
+﻿using AsyncRedisModels;
 using AsyncRedisModels.Attributes;
 using AsyncRedisModels.Contracts;
 using AsyncRedisModels.Index;
@@ -18,20 +18,32 @@ namespace AsyncRedisModels
         public DateTime CreatedAt { get; set; }
 
         [Hydrate]
-        public Character2 myCharacter { get; set; }
+        public NestedObject myNestedObject { get; set; }
 
-        public LinkedModels<Character> Characters => new LinkedModels<Character>(this);
-        public LinkedModel<Character> LinkedCharacter => new LinkedModel<Character>(this);
-        public LinkedModel<Character> LinkedCharacter2 => new LinkedModel<Character>(this);
+        public AsyncLinks<NestedObject> LinkedList => new AsyncLinks<NestedObject>(this);
+        public AsyncLinks<NestedObject> LinkedObject => new AsyncLinks<NestedObject>(this);
 
         public string IndexName()
         {
             return "character";
         }
 
-        public bool ChangeName() 
+        public async Task<bool> ChangeUsername(string username)
         {
-            return false;
+            //Ensure most updated data
+            await this.PullAsync(s => s.Username);
+            var oldUsername = Username;
+
+            Username = username;
+            var pushResult = await this.PushAsync(s => s.Username);
+            if (!pushResult.Succeeded)
+            {
+                Console.WriteLine(pushResult.Message);
+                Username = oldUsername;
+                return false;
+            }
+
+            return true;
         }
     }
 }
