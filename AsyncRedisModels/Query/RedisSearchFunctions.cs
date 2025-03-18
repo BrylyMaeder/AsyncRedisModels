@@ -128,7 +128,7 @@ namespace AsyncRedisModels.Query
                 for (int i = 1; i < resultsArray.Length; i += 2) // Increment by 2 to skip over document IDs
                 {
                     var item = (RedisResult[])resultsArray[i + 1]; // itemProperties are in the next index (i + 1)
-                    var model = ModelFactory.Create<TModel>($"{resultsArray[i]}"); // The document ID is at index i
+                    var model = ModelFactory.Create<TModel>($"{resultsArray[i]}"); 
 
                     // Map selected fields to model properties
                     for (int j = 0; j < selectedFields.Count; j++)

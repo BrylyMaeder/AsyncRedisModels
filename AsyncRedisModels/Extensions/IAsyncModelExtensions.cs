@@ -27,57 +27,65 @@ namespace AsyncRedisModels
 
         public static async Task DeleteAsync(this IAsyncModel model)
         {
-            await RedisSingleton.Database.KeyDeleteAsync(model.GetKey());
+            if (model == null) return;
 
-            if (model is IDeletionListener listener)
-            {
-                //inform a document listener that it's document is deleted.
-                await listener.OnDeleted();
-            }
+            // Get properties and collect deletion tasks
+            var properties = model.GetType().GetProperties()
+                .Where(p => p.CanRead &&
+                           (typeof(IAsyncModel).IsAssignableFrom(p.PropertyType) ||
+                            typeof(IDeletable).IsAssignableFrom(p.PropertyType)));
 
-            var properties = model.GetType().GetProperties();
+            var deletionTasks = new List<Task>();
 
-            // Iterate all components and delete them
+            // Add deletion tasks for nested objects
             foreach (var property in properties)
             {
-                // Check if the property is readable and of a type that implements IDeletable
-                if (property.CanRead)
+                var value = property.GetValue(model);
+                if (value is IAsyncModel nestedModel)
                 {
-                    var value = property.GetValue(model);
-                    if (value is IDeletable deletable)
-                    {
-                        // Call DeleteAsync on the IDeletable instance
-                        await deletable.DeleteAsync();
-                    }
+                    deletionTasks.Add(nestedModel.DeleteAsync());
+                }
+                else if (value is IDeletable deletable)
+                {
+                    deletionTasks.Add(deletable.DeleteAsync());
                 }
             }
 
-            const int batchSize = 100; //Cleanup dead keys
+            // Add primary deletion task
+            deletionTasks.Add(RedisSingleton.Database.KeyDeleteAsync(model.GetKey()));
+
+            // Add listener task if applicable
+            if (model is IDeletionListener listener)
+            {
+                deletionTasks.Add(listener.OnDeleted());
+            }
+
+            // Execute all deletions concurrently
+            await Task.WhenAll(deletionTasks);
+
+            // Handle related keys cleanup
+            const int batchSize = 100;
             var cursor = 0L;
 
             try
             {
                 do
                 {
-                    // Execute SCAN command to find keys with the specified pattern
-                    var scanResult = await RedisSingleton.Database.ExecuteAsync("SCAN", cursor.ToString(), "MATCH", $"{model.GetKey()}*", "COUNT", batchSize);
+                    var scanResult = await RedisSingleton.Database.ExecuteAsync("SCAN",
+                        cursor.ToString(), "MATCH", $"{model.GetKey()}*", "COUNT", batchSize);
 
-                    // Parse the SCAN result
                     var resultArray = (RedisResult[])scanResult;
-                    cursor = long.Parse(resultArray[0].ToString()); // Update cursor for next iteration
-                    var keys = ((RedisResult[])resultArray[1]).Select(r => (RedisKey)r).ToArray(); // Collect keys
+                    cursor = long.Parse(resultArray[0].ToString());
+                    var keys = ((RedisResult[])resultArray[1]).Select(r => (RedisKey)r).ToArray();
 
                     if (keys.Any())
                     {
-                        // Batch delete keys asynchronously
                         await RedisSingleton.Database.KeyDeleteAsync(keys);
                     }
-                } while (cursor != 0); // Continue until cursor is 0
-
+                } while (cursor != 0);
             }
             catch (Exception ex)
             {
-                // Log or handle errors here
                 Console.WriteLine($"Error during deletion: {ex.Message}");
             }
         }
@@ -122,7 +130,7 @@ namespace AsyncRedisModels
         private static async Task<ModelPushResult<T>> PushPropertyAsync<T>(T entity, string propertyName) where T : IAsyncModel
         {
             var db = RedisSingleton.Database;
-            var property = typeof(T).GetProperty(propertyName);
+            var property = typeof(T).GetProperty(propertyName, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
             var result = new ModelPushResult<T> { Data = entity, PropertyName = propertyName, Succeeded = true };
 
             if (property == null || !property.CanRead)
@@ -190,7 +198,7 @@ namespace AsyncRedisModels
 
                 if (value.HasValue)
                 {
-                    var property = typeof(T).GetProperty(memberName);
+                    var property = typeof(T).GetProperty(memberName, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
 
                     if (property != null && property.CanWrite)
                     {

@@ -11,6 +11,8 @@ using System.Threading;
 using AsyncRedisModels.Extensions;
 using System.Linq.Expressions;
 using AsyncRedisModels.Models;
+using System.Reflection;
+using AsyncRedisModels.Attributes;
 
 namespace AsyncRedisModels.Repository
 {
@@ -175,7 +177,10 @@ namespace AsyncRedisModels.Repository
         #endregion
 
         #region Loading
-        public static async Task<IEnumerable<TModel>> LoadManyAsync<TModel>(IEnumerable<string> ids, params Expression<Func<TModel, object>>[] expressions) where TModel : IAsyncModel
+        public static async Task<IEnumerable<TModel>> LoadManyAsync<TModel>(
+    IEnumerable<string> ids,
+    params Expression<Func<TModel, object>>[] expressions)
+    where TModel : IAsyncModel
         {
             var db = RedisSingleton.Database;
             var indexName = ModelHelper.GetIndex<TModel>();
@@ -206,63 +211,48 @@ namespace AsyncRedisModels.Repository
 
             if (!validKeys.Any()) return Enumerable.Empty<TModel>();
 
-            // Get member names from expressions or all properties
-            var memberNames = expressions.Any()
-                ? expressions.Select(exp => MemberSelector.GetMemberName(exp)).Select(name => (RedisValue)name).ToArray()
-                : typeof(TModel).GetProperties().Select(p => (RedisValue)p.Name).ToArray();
+            var memberNames = GetMemberNames(expressions);
 
-            // Create a new batch for fetching data
-            batch = db.CreateBatch();
-            var valueTasks = validKeys
-                .Select(key => batch.HashGetAsync(key, memberNames))
-                .ToList();
-
-            batch.Execute();
-            var valuesArray = await Task.WhenAll(valueTasks);
+            // Check if the HydrateAttribute is applied and enabled on TModel
+            var hydrateAttribute = typeof(TModel)
+                .GetCustomAttribute<HydrateAttribute>();
 
             var results = new List<TModel>();
+            var populateTasks = new List<Task>();
 
-            // Process each valid key
-            for (int i = 0; i < valuesArray.Length; i++)
+            // Always add populate tasks, even if data isn't fetched
+            foreach (var id in validKeys)
             {
-                var values = valuesArray[i];
-                var id = validKeys[i];
-
                 var result = ModelFactory.Create<TModel>(id);
-
-                // Map values to the corresponding properties
-                for (int j = 0; j < memberNames.Length; j++)
-                {
-                    var memberName = memberNames[j];
-                    var value = values[j];
-
-                    if (value.HasValue)
-                    {
-                        var property = typeof(TModel).GetProperty(memberName);
-
-                        if (property != null && property.CanWrite)
-                        {
-                            // Skip properties implementing IModelComponent
-                            if (typeof(IModelComponent).IsAssignableFrom(property.PropertyType))
-                            {
-                                continue;
-                            }
-                            if (typeof(IAsyncModel).IsAssignableFrom(property.PropertyType))
-                            {
-                                continue;
-                            }
-
-                            var convertedValue = value.DeserializeFromRedis(property.PropertyType);
-                            property.SetValue(result, convertedValue);
-                        }
-                    }
-                }
-
                 results.Add(result);
+
+                if (hydrateAttribute?.Enabled ?? false)
+                {
+                    // If HydrateAttribute is enabled, fetch values from Redis
+                    batch = db.CreateBatch();
+                    var valueTasks = validKeys
+                        .Select(key => batch.HashGetAsync(key, memberNames))
+                        .ToList();
+
+                    batch.Execute();
+                    var valuesArray = await Task.WhenAll(valueTasks);
+
+                    var values = valuesArray.FirstOrDefault();
+                    populateTasks.Add(ModelPopulationHelper.PopulateModelAsync(result, memberNames, values));
+                }
+                else
+                {
+                    // If not enabled, pass null values to populate
+                    populateTasks.Add(ModelPopulationHelper.PopulateModelAsync(result, memberNames, null));
+                }
             }
+
+            // Wait for all populate operations to complete
+            await Task.WhenAll(populateTasks);
 
             return results;
         }
+
 
         #endregion
 

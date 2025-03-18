@@ -1,4 +1,5 @@
-﻿using AsyncRedisModels.Contracts;
+﻿using AsyncRedisModels.Attributes;
+using AsyncRedisModels.Contracts;
 using AsyncRedisModels.Extensions;
 using AsyncRedisModels.Factory;
 using AsyncRedisModels.Helper;
@@ -10,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -105,8 +107,44 @@ namespace AsyncRedisModels.Repository
             }
         }
 
+        public static async Task<IAsyncModel> LoadAsync(Type modelType, string id)
+        {
+            if (!typeof(IAsyncModel).IsAssignableFrom(modelType))
+            {
+                throw new ArgumentException($"Type {modelType.Name} must implement IAsyncModel");
+            }
 
-        public static async Task<TModel> LoadAsync<TModel>(string id, params Expression<Func<TModel, object>>[] expressions) where TModel : IAsyncModel
+            // Get the static LoadAsync method from RedisRepository that matches the actual signature
+            var methodInfo = typeof(RedisRepository).GetMethods(BindingFlags.Static | BindingFlags.Public)
+                .FirstOrDefault(m =>
+                    m.Name == nameof(LoadAsync) &&
+                    m.IsGenericMethod &&
+                    m.GetParameters().Length == 2 &&  // Changed from 1 to 2 parameters
+                    m.GetParameters()[0].ParameterType == typeof(string) &&
+                    m.GetParameters()[1].ParameterType.IsArray);  // Looking for the params array
+
+            if (methodInfo == null)
+            {
+                throw new InvalidOperationException($"No matching LoadAsync method found in RedisRepository for type {modelType.Name}.");
+            }
+
+            // Create the generic version with the specified modelType
+            var genericMethod = methodInfo.MakeGenericMethod(modelType);
+
+            // Invoke with an empty expressions array since we don't need expressions
+            var emptyExpressions = Array.CreateInstance(
+                typeof(Expression<>).MakeGenericType(
+                    typeof(Func<,>).MakeGenericType(modelType, typeof(object))),
+                0);
+
+            var task = (Task)genericMethod.Invoke(null, new object[] { id, emptyExpressions });
+            await task.ConfigureAwait(false);
+
+            return (IAsyncModel)task.GetType().GetProperty("Result").GetValue(task);
+        }
+
+        public static async Task<TModel> LoadAsync<TModel>(string id, params Expression<Func<TModel, object>>[] expressions)
+    where TModel : IAsyncModel
         {
             var db = RedisSingleton.Database;
             var key = ModelHelper.CreateKey<TModel>(id);
@@ -114,40 +152,23 @@ namespace AsyncRedisModels.Repository
             if (!await db.KeyExistsAsync(key))
                 return default;
 
-            var memberNames = expressions.Any()
-                ? expressions.Select(exp => MemberSelector.GetMemberName(exp)).Select(name => (RedisValue)name).ToArray()
-                : typeof(TModel).GetProperties().Select(p => (RedisValue)p.Name).ToArray();
+            var memberNames = GetMemberNames(expressions);
 
-            var values = await db.HashGetAsync(key, memberNames);
+            // Check if the HydrateAttribute is applied and enabled on TModel
+            var hydrateAttribute = typeof(TModel)
+                .GetCustomAttribute<HydrateAttribute>();
+
+            var values = (hydrateAttribute?.Enabled ?? false)
+                ? await db.HashGetAsync(key, memberNames) // Fetch values if hydrate is enabled
+                : null; // Otherwise, use null values
+
             var result = ModelFactory.Create<TModel>(id);
 
-            for (int i = 0; i < memberNames.Length; i++)
-            {
-                var memberName = memberNames[i];
-                var value = values[i];
-
-                if (value.HasValue)
-                {
-                    var property = typeof(TModel).GetProperty(memberName);
-
-                    if (property != null && property.CanWrite)
-                    {
-                        // Skip properties implementing IModelComponent
-                        if (typeof(IModelComponent).IsAssignableFrom(property.PropertyType))
-                        {
-                            continue;
-                        }
-                        if (typeof(IAsyncModel).IsAssignableFrom(property.PropertyType))
-                        {
-                            continue;
-                        }
-                        var convertedValue = value.DeserializeFromRedis(property.PropertyType);
-                        property.SetValue(result, convertedValue);
-                    }
-                }
-            }
+            // Always call PopulateModelAsync, passing null if hydrate is not enabled
+            await ModelPopulationHelper.PopulateModelAsync(result, memberNames, values);
 
             return result;
         }
+
     }
 }

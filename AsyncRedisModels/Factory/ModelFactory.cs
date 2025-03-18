@@ -8,19 +8,28 @@ namespace AsyncRedisModels.Factory
 {
     public static class ModelFactory
     {
-        public static TDocument Create<TDocument>(string id) where TDocument : IAsyncModel
+        public static TModel Create<TModel>(string id) where TModel : IAsyncModel
         {
-            var instance = CreateEmpty(typeof(TDocument));
+            var instance = CreateEmpty(typeof(TModel));
 
             // Redis queries return the ID with the index path included; let's strip that out:
+            var index = instance.IndexName();
+            instance.Id = id.Replace($"{index}:", "");
+
+            return (TModel)instance;
+        }
+
+        internal static IAsyncModel CreateEmpty(Type asyncDocumentType, string id) 
+        {
+            var instance = CreateEmpty(asyncDocumentType);
+
             var index = instance.IndexName();
             id = id.Replace($"{index}:", "");
 
             instance.Id = id;
 
-            return (TDocument)instance;
+            return instance;
         }
-
         internal static IAsyncModel CreateEmpty(Type asyncDocumentType)
         {
             if (asyncDocumentType == null)

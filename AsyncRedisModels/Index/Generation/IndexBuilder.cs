@@ -19,16 +19,30 @@ namespace AsyncRedisModels.Index.Generation
 
         public static void InitializeIndexes()
         {
-            foreach (var asyncDocumentType in GetAllAsyncDocumentTypes())
+            try
             {
-                if (!_indexedDocuments.Contains(asyncDocumentType))
+                foreach (var asyncDocumentType in GetAllAsyncDocumentTypes())
                 {
-                    _indexedDocuments.Add(asyncDocumentType);
+                    if (!_indexedDocuments.Contains(asyncDocumentType))
+                    {
+                        _indexedDocuments.Add(asyncDocumentType);
 
-                    // Use Activator to create an instance of the actual type
-                    var instance = ModelFactory.CreateEmpty(asyncDocumentType);
-                    EnsureIndexAsync(instance).Wait();
+                        try
+                        {
+                            // Use Activator to create an instance of the actual type
+                            var instance = ModelFactory.CreateEmpty(asyncDocumentType);
+                            EnsureIndexAsync(instance).Wait();
+                        }
+                        catch(Exception e)
+                        {
+                            Console.WriteLine(e);
+                        }
+                    }
                 }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
             }
         }
 
